@@ -56,6 +56,7 @@ const LARGE_PASTE_CHAR_THRESHOLD: usize = 1000;
 pub enum InputResult {
     Submitted(String),
     Command(SlashCommand),
+    CommandWithArgs(SlashCommand, String),
     None,
 }
 
@@ -416,6 +417,8 @@ impl ChatComposer {
                 ..
             } => {
                 if let Some(sel) = popup.selected_item() {
+                    // Preserve original line for argument extraction before clearing.
+                    let original = self.textarea.text().to_string();
                     // Clear textarea so no residual text remains.
                     self.textarea.set_text("");
                     // Capture any needed data from popup before clearing it.
@@ -430,6 +433,15 @@ impl ChatComposer {
 
                     match sel {
                         CommandItem::Builtin(cmd) => {
+                            // Special-case: `/sh <args>` should carry args along.
+                            if matches!(cmd, SlashCommand::Sh) {
+                                let args = original
+                                    .trim_start()
+                                    .strip_prefix("/sh")
+                                    .map(|s| s.trim_start().to_string())
+                                    .unwrap_or_default();
+                                return (InputResult::CommandWithArgs(cmd, args), true);
+                            }
                             return (InputResult::Command(cmd), true);
                         }
                         CommandItem::UserPrompt(_) => {
@@ -811,6 +823,16 @@ impl ChatComposer {
                     return (InputResult::None, true);
                 }
                 let mut text = self.textarea.text().to_string();
+                // If the line is a direct '/sh ...' invocation, dispatch as a command.
+                if text.trim_start().starts_with("/sh") {
+                    let args = text
+                        .trim_start()
+                        .strip_prefix("/sh")
+                        .map(|s| s.trim_start().to_string())
+                        .unwrap_or_default();
+                    self.textarea.set_text("");
+                    return (InputResult::CommandWithArgs(SlashCommand::Sh, args), true);
+                }
                 self.textarea.set_text("");
 
                 // Replace all pending pastes in the text
@@ -1857,7 +1879,7 @@ mod tests {
         // When a slash command is dispatched, the composer should return a
         // Command result (not submit literal text) and clear its textarea.
         match result {
-            InputResult::Command(cmd) => {
+            InputResult::Command(cmd) | InputResult::CommandWithArgs(cmd, _) => {
                 assert_eq!(cmd.command(), "init");
             }
             InputResult::Submitted(text) => {
@@ -1915,7 +1937,7 @@ mod tests {
             composer.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
         match result {
-            InputResult::Command(cmd) => {
+            InputResult::Command(cmd) | InputResult::CommandWithArgs(cmd, _) => {
                 assert_eq!(cmd.command(), "mention");
             }
             InputResult::Submitted(text) => {

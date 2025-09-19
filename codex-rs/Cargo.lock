@@ -929,7 +929,6 @@ dependencies = [
  "libc",
  "mcp-types",
  "once_cell",
- "owo-colors",
  "path-clean",
  "pathdiff",
  "pretty_assertions",
@@ -1077,7 +1076,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
- "wiremock",
 ]
 
 [[package]]

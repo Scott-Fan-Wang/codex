@@ -180,7 +180,7 @@ async fn creates_missing_codex_home_dir() {
     let server = run_login_server(opts).unwrap();
     let login_port = server.actual_port;
 
-    let client = reqwest::Client::new();
+    let client = codex_core::default_client::create_client();
     let url = format!("http://127.0.0.1:{login_port}/auth/callback?code=abc&state=state2");
     let resp = client.get(&url).send().await.unwrap();
     assert!(resp.status().is_success());
@@ -245,7 +245,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() {
         .expect_err("login server should report cancellation");
     assert_eq!(cancel_result.kind(), io::ErrorKind::Interrupted);
 
-    let client = reqwest::Client::new();
+    let client = codex_core::default_client::create_client();
     let cancel_url = format!("http://127.0.0.1:{login_port}/cancel");
     let resp = client.get(cancel_url).send().await.unwrap();
     assert!(resp.status().is_success());

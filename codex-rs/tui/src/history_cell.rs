@@ -44,7 +44,6 @@ use ratatui::style::Stylize;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::WidgetRef;
 use ratatui::widgets::Wrap;
-use std::any::Any;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
@@ -71,7 +70,7 @@ pub(crate) enum PatchEventType {
 /// Represents an event to display in the conversation history. Returns its
 /// `Vec<Line<'static>>` representation to make it easier to display in a
 /// scrollable list.
-pub(crate) trait HistoryCell: std::fmt::Debug + Send + Sync + Any {
+pub(crate) trait HistoryCell: std::fmt::Debug + Send + Sync {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>>;
 
     fn transcript_lines(&self) -> Vec<Line<'static>> {
@@ -91,15 +90,9 @@ pub(crate) trait HistoryCell: std::fmt::Debug + Send + Sync + Any {
     }
 }
 
-impl dyn HistoryCell {
-    pub(crate) fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct UserHistoryCell {
-    pub message: String,
+    message: String,
 }
 
 impl HistoryCell for UserHistoryCell {
@@ -236,13 +229,6 @@ impl HistoryCell for TranscriptOnlyHistoryCell {
     }
 }
 
-/// Cyan history cell line showing the current review status.
-pub(crate) fn new_review_status_line(message: String) -> PlainHistoryCell {
-    PlainHistoryCell {
-        lines: vec![Line::from(message.cyan())],
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct PatchHistoryCell {
     event_type: PatchEventType,
@@ -325,6 +311,7 @@ impl ExecCell {
     }
 
     fn exploring_display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        use textwrap::Options as TwOptions;
         let mut out: Vec<Line<'static>> = Vec::new();
         let active_start_time = self
             .calls
@@ -391,7 +378,7 @@ impl ExecCell {
                 )]
             } else {
                 let mut lines = Vec::new();
-                for p in call.parsed {
+                for p in call.parsed.iter().cloned() {
                     match p {
                         ParsedCommand::Read { name, .. } => {
                             lines.push(("Read", vec![name.into()]));
@@ -418,8 +405,9 @@ impl ExecCell {
                 }
                 lines
             };
-            for (title, line) in call_lines {
-                let line = Line::from(line);
+            // Render the summarized action line(s)
+            for (title, spans) in call_lines.iter() {
+                let line = Line::from(spans.clone());
                 let initial_indent = Line::from(vec![title.cyan(), " ".into()]);
                 let subsequent_indent = " ".repeat(initial_indent.width()).into();
                 let wrapped = word_wrap_line(
@@ -429,6 +417,34 @@ impl ExecCell {
                         .subsequent_indent(subsequent_indent),
                 );
                 push_owned_lines(&wrapped, &mut out_indented);
+            }
+
+            // For ListFiles commands (e.g., `/sh ls -la`), also render a small
+            // snippet of the command output so users can see the filenames.
+            let is_list_only = call
+                .parsed
+                .iter()
+                .all(|c| matches!(c, ParsedCommand::ListFiles { .. }));
+            if is_list_only {
+                if let Some(output) = call.output.as_ref() {
+                    let out_str = output_lines(Some(output), OutputLinesParams {
+                        only_err: false,
+                        include_angle_pipe: false,
+                        include_prefix: false,
+                    })
+                        .into_iter()
+                        .join("\n");
+                    if !out_str.trim().is_empty() {
+                        for line in out_str.lines() {
+                            // Account for the later "  └ "/"    " prefix width
+                            let wrap_width = (width as usize).saturating_sub(4);
+                            let wrapped = textwrap::wrap(line, TwOptions::new(wrap_width));
+                            out_indented.extend(
+                                wrapped.into_iter().map(|l| Line::from(l.to_string().dim())),
+                            );
+                        }
+                    }
+                }
             }
         }
         out.extend(prefix_lines(out_indented, "  └ ".dim(), "    ".into()));

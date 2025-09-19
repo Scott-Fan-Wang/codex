@@ -17,6 +17,7 @@ use chrono::Utc;
 use codex_core::auth::AuthDotJson;
 use codex_core::auth::get_auth_file;
 use codex_core::default_client::ORIGINATOR;
+use codex_core::default_client::create_client;
 use codex_core::token_data::TokenData;
 use codex_core::token_data::parse_id_token;
 use rand::RngCore;
@@ -88,6 +89,7 @@ impl ShutdownHandle {
 pub fn run_login_server(opts: ServerOptions) -> io::Result<LoginServer> {
     let pkce = generate_pkce();
     let state = opts.force_state.clone().unwrap_or_else(generate_state);
+    eprintln!("OAuth Debug: Generated state parameter: '{}'", state);
 
     let server = bind_server(opts.port)?;
     let actual_port = match server.server_addr().to_ip() {
@@ -103,9 +105,21 @@ pub fn run_login_server(opts: ServerOptions) -> io::Result<LoginServer> {
 
     let redirect_uri = format!("http://localhost:{actual_port}/auth/callback");
     let auth_url = build_authorize_url(&opts.issuer, &opts.client_id, &redirect_uri, &pkce, &state);
+    eprintln!("OAuth Debug: Authorization URL: {}", auth_url);
 
     if opts.open_browser {
-        let _ = webbrowser::open(&auth_url);
+        // If we're using a proxy, we might need to use a different approach for browser opening
+        // For now, let the user manually copy the URL to ensure consistency
+        if std::env::var("HTTP_PROXY").is_ok()
+            || std::env::var("HTTPS_PROXY").is_ok()
+            || std::env::var("ALL_PROXY").is_ok()
+        {
+            eprintln!(
+                "Note: Proxy detected. For best results, manually copy the URL above to your browser."
+            );
+        } else {
+            let _ = webbrowser::open(&auth_url);
+        }
     }
 
     // Map blocking reads from server.recv() to an async channel.
@@ -212,7 +226,16 @@ async fn process_request(
         "/auth/callback" => {
             let params: std::collections::HashMap<String, String> =
                 parsed_url.query_pairs().into_owned().collect();
-            if params.get("state").map(String::as_str) != Some(state) {
+
+            // Debug state parameter comparison
+            let received_state = params.get("state").map(String::as_str);
+            eprintln!("OAuth Callback Debug:");
+            eprintln!("Expected state: '{}'", state);
+            eprintln!("Received state: '{:?}'", received_state);
+            eprintln!("Full callback URL: {}", url_raw);
+            eprintln!("Parsed query params: {:?}", params);
+
+            if received_state != Some(state) {
                 return HandledRequest::Response(
                     Response::from_string("State mismatch").with_status_code(400),
                 );
@@ -316,11 +339,17 @@ fn build_authorize_url(
         ("state", state),
         ("originator", ORIGINATOR.value.as_str()),
     ];
-    let qs = query
+    let encoded_params: Vec<String> = query
         .into_iter()
-        .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
-        .collect::<Vec<_>>()
-        .join("&");
+        .map(|(k, v)| {
+            let encoded_value = urlencoding::encode(v);
+            if k == "state" {
+                eprintln!("OAuth Debug: Encoding state '{}' -> '{}'", v, encoded_value);
+            }
+            format!("{}={}", k, encoded_value)
+        })
+        .collect();
+    let qs = encoded_params.join("&");
     format!("{issuer}/oauth/authorize?{qs}")
 }
 
@@ -412,17 +441,19 @@ async fn exchange_code_for_tokens(
         refresh_token: String,
     }
 
-    let client = reqwest::Client::new();
+    let client = create_client();
+
+    let request_body = format!(
+        "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&code_verifier={}",
+        urlencoding::encode(code),
+        urlencoding::encode(redirect_uri),
+        urlencoding::encode(client_id),
+        urlencoding::encode(&pkce.code_verifier)
+    );
     let resp = client
         .post(format!("{issuer}/oauth/token"))
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(format!(
-            "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&code_verifier={}",
-            urlencoding::encode(code),
-            urlencoding::encode(redirect_uri),
-            urlencoding::encode(client_id),
-            urlencoding::encode(&pkce.code_verifier)
-        ))
+        .body(request_body)
         .send()
         .await
         .map_err(io::Error::other)?;
@@ -567,18 +598,20 @@ async fn obtain_api_key(issuer: &str, client_id: &str, id_token: &str) -> io::Re
     struct ExchangeResp {
         access_token: String,
     }
-    let client = reqwest::Client::new();
+    let client = create_client();
+
+    let request_body = format!(
+        "grant_type={}&client_id={}&requested_token={}&subject_token={}&subject_token_type={}",
+        urlencoding::encode("urn:ietf:params:oauth:grant-type:token-exchange"),
+        urlencoding::encode(client_id),
+        urlencoding::encode("openai-api-key"),
+        urlencoding::encode(id_token),
+        urlencoding::encode("urn:ietf:params:oauth:token-type:id_token")
+    );
     let resp = client
         .post(format!("{issuer}/oauth/token"))
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .body(format!(
-            "grant_type={}&client_id={}&requested_token={}&subject_token={}&subject_token_type={}",
-            urlencoding::encode("urn:ietf:params:oauth:grant-type:token-exchange"),
-            urlencoding::encode(client_id),
-            urlencoding::encode("openai-api-key"),
-            urlencoding::encode(id_token),
-            urlencoding::encode("urn:ietf:params:oauth:token-type:id_token")
-        ))
+        .body(request_body)
         .send()
         .await
         .map_err(io::Error::other)?;

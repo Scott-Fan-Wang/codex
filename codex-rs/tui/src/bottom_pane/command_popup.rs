@@ -286,6 +286,26 @@ mod tests {
     }
 
     #[test]
+    fn sh_lists_in_builtins_and_filters() {
+        let mut popup = CommandPopup::new(Vec::new());
+
+        // With empty filter, ensure /sh appears among built-ins.
+        let items = popup.filtered_items();
+        let has_sh = items
+            .iter()
+            .any(|i| matches!(i, CommandItem::Builtin(b) if b.command()=="sh"));
+        assert!(has_sh, "expected '/sh' to be present in built-in commands");
+
+        // With a filter starting with '/sh', ensure /sh is included.
+        popup.on_composer_text_change("/sh".to_string());
+        let items = popup.filtered_items();
+        let has_sh2 = items
+            .iter()
+            .any(|i| matches!(i, CommandItem::Builtin(b) if b.command()=="sh"));
+        assert!(has_sh2, "expected '/sh' to match filter '/sh'");
+    }
+
+    #[test]
     fn prompt_discovery_lists_custom_prompts() {
         let prompts = vec![
             CustomPrompt {

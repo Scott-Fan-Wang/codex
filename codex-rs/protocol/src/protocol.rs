@@ -173,6 +173,18 @@ pub enum Op {
 
     /// Request to shut down codex instance.
     Shutdown,
+
+    /// Directly request execution of a local shell command from the UI,
+    /// bypassing the model. This follows the standard approval/sandbox flow
+    /// and emits ExecCommandBegin/End events (or PatchApply events for
+    /// apply_patch).
+    RequestExec {
+        /// The command and its arguments (argv-style).
+        command: Vec<String>,
+        /// Optional justification shown in approval prompts.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
 }
 
 /// Determines the conditions under which the user is consulted to approve
@@ -1240,7 +1252,6 @@ pub struct TurnAbortedEvent {
 pub enum TurnAbortReason {
     Interrupted,
     Replaced,
-    ReviewEnded,
 }
 
 #[cfg(test)]
@@ -1253,8 +1264,7 @@ mod tests {
     /// amount of nesting.
     #[test]
     fn serialize_event() {
-        let conversation_id =
-            ConversationId::from_string("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap();
+        let conversation_id = ConversationId(uuid::uuid!("67e55044-10b1-426f-9247-bb680e5fe0c8"));
         let rollout_file = NamedTempFile::new().unwrap();
         let event = Event {
             id: "1234".to_string(),

@@ -54,6 +54,13 @@ pub(crate) async fn spawn_child_async(
     cmd.args(args);
     cmd.current_dir(cwd);
     cmd.env_clear();
+
+    // Preserve PATH so argv[0] lookups (e.g., "ls") resolve as users expect.
+    // If the caller supplies an explicit PATH in `env`, that will override this.
+    if let Some(path) = std::env::var_os("PATH").or_else(|| std::env::var_os("Path")) {
+        cmd.env("PATH", path);
+    }
+
     cmd.envs(env);
 
     if !sandbox_policy.has_full_network_access() {

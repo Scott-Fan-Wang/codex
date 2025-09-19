@@ -920,7 +920,7 @@ impl Config {
         let resolved_cwd = {
             use std::env;
 
-            match cwd {
+            let path = match cwd {
                 None => {
                     tracing::info!("cwd not set, using current dir");
                     env::current_dir()?
@@ -933,7 +933,26 @@ impl Config {
                     current.push(p);
                     current
                 }
+            };
+
+            // Validate that the directory exists
+            if !path.exists() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("Working directory does not exist: {}", path.display()),
+                ));
             }
+            if !path.is_dir() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "Working directory path is not a directory: {}",
+                        path.display()
+                    ),
+                ));
+            }
+
+            path
         };
 
         let history = cfg.history.unwrap_or_default();
@@ -1163,7 +1182,6 @@ pub fn log_dir(cfg: &Config) -> std::io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use crate::config_types::HistoryPersistence;
-    use crate::config_types::Notifications;
 
     use super::*;
     use pretty_assertions::assert_eq;
@@ -1200,19 +1218,6 @@ persistence = "none"
             }),
             history_no_persistence_cfg.history
         );
-    }
-
-    #[test]
-    fn tui_config_missing_notifications_field_defaults_to_disabled() {
-        let cfg = r#"
-[tui]
-"#;
-
-        let parsed = toml::from_str::<ConfigToml>(cfg)
-            .expect("TUI config without notifications should succeed");
-        let tui = parsed.tui.expect("config should include tui section");
-
-        assert_eq!(tui.notifications, Notifications::Enabled(false));
     }
 
     #[test]

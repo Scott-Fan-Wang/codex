@@ -105,6 +105,7 @@ fn sanitize_user_agent(candidate: String, fallback: &str) -> String {
 }
 
 /// Create a reqwest client with default `originator` and `User-Agent` headers set.
+/// Automatically configures HTTP_PROXY, HTTPS_PROXY, and NO_PROXY environment variables.
 pub fn create_client() -> reqwest::Client {
     use reqwest::header::HeaderMap;
 
@@ -112,12 +113,29 @@ pub fn create_client() -> reqwest::Client {
     headers.insert("originator", ORIGINATOR.header_value.clone());
     let ua = get_codex_user_agent();
 
-    reqwest::Client::builder()
+    let mut builder = reqwest::Client::builder()
         // Set UA via dedicated helper to avoid header validation pitfalls
         .user_agent(ua)
-        .default_headers(headers)
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+        .default_headers(headers);
+
+    // Configure proxy from environment variables
+    // Check for proxy environment variables in standard precedence order
+    let proxy_url = std::env::var("HTTPS_PROXY")
+        .or_else(|_| std::env::var("https_proxy"))
+        .or_else(|_| std::env::var("HTTP_PROXY"))
+        .or_else(|_| std::env::var("http_proxy"))
+        .or_else(|_| std::env::var("ALL_PROXY"))
+        .or_else(|_| std::env::var("all_proxy"));
+
+    if let Ok(proxy_url) = proxy_url {
+        // Use reqwest::Proxy::all() to handle both HTTP and HTTPS through the same proxy
+        // This is important because auth.openai.com uses HTTPS and needs CONNECT tunneling
+        if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+            builder = builder.proxy(proxy);
+        }
+    }
+
+    builder.build().unwrap_or_else(|_| reqwest::Client::new())
 }
 
 #[cfg(test)]
@@ -208,5 +226,45 @@ mod tests {
         )
         .unwrap();
         assert!(re.is_match(&user_agent));
+    }
+
+    #[test]
+    fn test_proxy_configuration_from_environment() {
+        // Test that the client creation doesn't panic with proxy environment variables set
+        unsafe {
+            std::env::set_var("HTTP_PROXY", "http://proxy.example.com:8080");
+            std::env::set_var("HTTPS_PROXY", "https://proxy.example.com:8080");
+        }
+
+        // This should not panic and should create a client with proxy configuration
+        let client = create_client();
+
+        // Clean up environment variables
+        unsafe {
+            std::env::remove_var("HTTP_PROXY");
+            std::env::remove_var("HTTPS_PROXY");
+        }
+
+        // Basic verification that we got a client back
+        assert!(client.get("https://httpbin.org/user-agent").build().is_ok());
+    }
+
+    #[test]
+    fn test_invalid_proxy_fallback() {
+        // Test that invalid proxy URLs don't break client creation
+        unsafe {
+            std::env::set_var("HTTP_PROXY", "invalid-proxy-url");
+        }
+
+        // Should still create a client even with invalid proxy
+        let client = create_client();
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("HTTP_PROXY");
+        }
+
+        // Basic verification that we got a client back
+        assert!(client.get("https://httpbin.org/user-agent").build().is_ok());
     }
 }

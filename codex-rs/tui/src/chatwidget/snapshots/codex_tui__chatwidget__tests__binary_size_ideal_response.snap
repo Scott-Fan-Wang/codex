@@ -1,6 +1,6 @@
 ---
 source: tui/src/chatwidget/tests.rs
-assertion_line: 648
+assertion_line: 803
 expression: visible_after
 ---
 > I’m going to scan the workspace and Cargo manifests to see build profiles and
@@ -15,6 +15,17 @@ expression: visible_after
         file-search linux-sandbox login mcp-client mcp-server mcp-types ollama
         tui; do echo "--- $d/Cargo.toml"; sed -n '1,200p' $d/Cargo.toml; echo;
         done
+    --- ansi-escape/Cargo.toml
+    [package]
+    edition = "2024"
+    name = "codex-ansi-escape"
+    version = { workspace = true }
+    … +237 lines
+        "process",
+        "rt-multi-thread",
+        "signal",
+    ] }
+    tracing = { version
 
 • Explored
   └ Read Cargo.toml
