@@ -1,6 +1,5 @@
 ---
 source: tui/src/chatwidget/tests.rs
-assertion_line: 803
 expression: visible_after
 ---
 > I’m going to scan the workspace and Cargo manifests to see build profiles and
@@ -8,6 +7,17 @@ expression: visible_after
 
 • Explored
   └ List ls -la
+    total 6696
+    drwxr-xr-x@ 39 easong  staff     1248 Aug  9 08:49 .
+    drwxr-xr-x@ 29 easong  staff      928 Aug  9 08:50 ..
+    -rw-r--r--@  1 easong  staff    10244 Aug  8 21:13 .DS_Store
+    -rw-r--r--@  1 easong  staff      212 Aug  4 18:49 .gitignore
+    … +30 lines
+    -rw-r--r--@  1 easong  staff     9971 Aug  8 23:07 simpler.md
+    drwxr-xr-x@  6 easong  staff      192 Aug  4 22:40 target
+    drwxr-xr-x@  6 easong  staff      192 Aug  7 19:20 tui
+    -rw-r--r--@  1 easong  staff     8639 Aug  6 23:30 typewriter.md
+    -rw-r--r--@  1 easong  staff     7673 Aug  6 21:58 wrap-plan.md
     Read Cargo.toml
 
 • Ran

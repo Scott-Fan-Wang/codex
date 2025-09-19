@@ -427,13 +427,16 @@ impl ExecCell {
                 .all(|c| matches!(c, ParsedCommand::ListFiles { .. }));
             if is_list_only {
                 if let Some(output) = call.output.as_ref() {
-                    let out_str = output_lines(Some(output), OutputLinesParams {
-                        only_err: false,
-                        include_angle_pipe: false,
-                        include_prefix: false,
-                    })
-                        .into_iter()
-                        .join("\n");
+                    let out_str = output_lines(
+                        Some(output),
+                        OutputLinesParams {
+                            only_err: false,
+                            include_angle_pipe: false,
+                            include_prefix: false,
+                        },
+                    )
+                    .into_iter()
+                    .join("\n");
                     if !out_str.trim().is_empty() {
                         for line in out_str.lines() {
                             // Account for the later "  └ "/"    " prefix width
@@ -496,9 +499,7 @@ impl ExecCell {
                 body_lines.extend(wrapped_borrowed.iter().map(|l| line_to_static(l)));
             }
         }
-        if let Some(output) = call.output.as_ref()
-            && output.exit_code != 0
-        {
+        if let Some(output) = call.output.as_ref() {
             let out = output_lines(
                 Some(output),
                 OutputLinesParams {

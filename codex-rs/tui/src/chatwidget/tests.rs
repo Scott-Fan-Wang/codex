@@ -537,6 +537,10 @@ fn exec_history_cell_shows_working_then_completed() {
         blob.contains("echo done"),
         "expected command text to be present: {blob:?}"
     );
+    assert!(
+        blob.contains("  └ done"),
+        "expected stdout to be rendered: {blob:?}"
+    );
 }
 
 #[test]

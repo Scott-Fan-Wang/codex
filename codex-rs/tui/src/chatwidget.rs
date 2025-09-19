@@ -522,6 +522,10 @@ impl ChatWidget {
                 self.flush_active_exec_cell();
             }
         }
+
+        // Ensure the finished command output renders immediately without requiring
+        // an additional user interaction to trigger a redraw.
+        self.request_redraw();
     }
 
     pub(crate) fn handle_patch_apply_end_now(
